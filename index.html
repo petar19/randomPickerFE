@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Picker</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" 
+        rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+    <h1 class="text-3xl font-bold mb-4">Random Picker</h1>
+    <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+        <p id="roomIndicator" class="text-lg text-gray-700 font-semibold"></p>
+        <input id="roomInput" type="text" placeholder="Enter Room Code" style="display: none;">
+        <button id="joinButton" 
+            class="mt-2 bg-red-500 text-white px-4 py-2 rounded disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed" 
+            onclick="setRoom()" 
+            style="display: none;">
+            Join Room
+        </button>
+        <button id="leaveButton" 
+            class="mt-2 bg-red-500 text-white px-4 py-2 rounded disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed" 
+            onclick="leaveRoom()">
+            Leave Room
+        </button>
+        <br>
+        <input id="optionInput" class="border p-2 mt-2 w-full rounded" type="text" placeholder="Enter an option">
+        <button id="addOptionButton" 
+            class="bg-blue-500 text-white px-4 py-2 rounded mt-2 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed" 
+            onclick="addOption()">
+            Add Option
+        </button>
+        <label class="flex items-center space-x-2 cursor-pointer mt-4">
+            <input id="lockInCheckbox" type="checkbox" class="w-5 h-5 accent-yellow-500 rounded-md" onclick="lockOptions()">
+            <span class="text-gray-700 font-medium">Lock In</span>
+        </label>
+        <ul id="optionsList" class="mt-4 space-y-2"></ul>
+        <h2 id="result" class="mt-4 text-xl font-semibold text-gray-800"></h2>
+    </div>
+    
+
+    <script>
+        document.getElementById('leaveButton').disabled = true
+        document.getElementById('addOptionButton').disabled = true
+        let socket;
+        let roomCode = new URLSearchParams(window.location.search).get("room");
+
+        function setRoom() {
+            const inputRoom = document.getElementById("roomInput").value.trim();
+            if (inputRoom) {
+                window.location.href = `?room=${inputRoom}`;
+            }
+        }
+
+        function joinRoom() {
+            if (!roomCode) {
+                document.getElementById("roomInput").style.display = "block";
+                document.getElementById("joinButton").style.display = "block";
+                return;
+            }
+            document.getElementById("roomIndicator").innerText = `Connected to Room: ${roomCode}`;
+            socket = new WebSocket(`ws://localhost:8000/ws/${roomCode}`);
+
+            socket.onopen = () => {
+                socket.send(JSON.stringify({ action: "get_state" }));
+                document.getElementById('leaveButton').disabled = false
+                document.getElementById('addOptionButton').disabled = false
+            };
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.action === "update") {
+                    updateOptionsList(data.options, data.locked);
+                } else if (data.action === "result") {
+                    document.getElementById("result").innerText = `Chosen: ${data.choice}`;
+                    document.getElementById('lockInCheckbox').disabled = true
+                    document.getElementById('addOptionButton').disabled = true
+                    document.getElementById('optionInput').disabled = true
+                }
+            };
+        }
+
+        function removeOption(option_uuid) {
+            socket.send(JSON.stringify({ action: "remove_option", option_uuid }));
+        }
+
+        function addOption() {
+            document.getElementById('optionInput').value = document.getElementById('optionInput').value.trim()
+            const option = document.getElementById("optionInput").value;
+            if (option !== "") socket.send(JSON.stringify({ action: "add_option", option }));
+            document.getElementById('optionInput').value = ""
+        }
+
+        function lockOptions() {
+            const checkBox = document.getElementById("lockInCheckbox");
+            socket.send(JSON.stringify({ action: "lock", isLocked: checkBox.checked }));
+        }
+
+        function leaveRoom() {
+            if (socket) {
+                socket.close();
+            }
+            window.location.href = "index.html"; // Redirect to main page or home
+        }
+
+        function updateOptionsList(options, locked) {
+            console.log('updating', options, locked)
+            const list = document.getElementById("optionsList");
+            list.innerHTML = "";
+            for (let [option_uuid, opt] of Object.entries(options)) {
+                console.info(option_uuid, opt)
+                const li = document.createElement("li");
+                li.id = option_uuid
+                li.className = "flex items-center justify-between bg-white p-3 rounded-lg shadow"
+                const liSpan = document.createElement("span");
+                liSpan.className = "text-gray-800"
+                li.textContent = opt
+
+
+                const deleteButton = document.createElement('button')
+                deleteButton.className = "text-red-500 hover:text-red-700"
+                const deleteButtonSpan = document.createElement('span')
+                deleteButtonSpan.className = 'material-icons'
+                deleteButtonSpan.innerHTML = 'delete'
+                deleteButton.onclick = () => removeOption(option_uuid)
+                deleteButton.appendChild(deleteButtonSpan)
+
+                li.appendChild(deleteButton);
+                list.appendChild(li);
+            }
+        }
+
+        document.getElementById("optionInput").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                addOption()
+            }
+        });
+
+        window.onload = joinRoom;
+    </script>
+</body>
+</html>
