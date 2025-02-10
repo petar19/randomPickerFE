@@ -59,7 +59,7 @@
             if (inputRoom) {
                 window.location.href = `?room=${inputRoom}`;
                 document.getElementById("leaveButton").classList.remove("hidden"); 
-                document.getElementById("roomIndicator").innerText = `Joining... ${roomCode}`;
+                document.getElementById("roomIndicator").innerText = `Joining room... ${roomCode}`;
             }
         }
 
@@ -69,12 +69,14 @@
                 document.getElementById("joinButton").style.display = "block";
                 return;
             }
+            document.getElementById("roomIndicator").innerText = `Joining room... ${roomCode}`;
+            document.getElementById("leaveButton").classList.remove("hidden");
+
             socket = new WebSocket(`${CONFIG.BACKEND_URL}/ws/${roomCode}`);
             
             socket.onopen = () => {
                 socket.send(JSON.stringify({ action: "get_state" }));
                 document.getElementById("roomIndicator").innerText = `Connected to Room: ${roomCode}`;
-                document.getElementById("leaveButton").classList.remove("hidden");
                 document.getElementById('addOptionButton').disabled = false
                 isRoomLocked = false
             };
