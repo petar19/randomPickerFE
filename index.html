@@ -74,6 +74,7 @@
             socket.onopen = () => {
                 socket.send(JSON.stringify({ action: "get_state" }));
                 document.getElementById("roomIndicator").innerText = `Connected to Room: ${roomCode}`;
+                document.getElementById('leaveButton').disabled = false
                 document.getElementById('addOptionButton').disabled = false
                 isRoomLocked = false
             };
