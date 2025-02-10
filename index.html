@@ -10,6 +10,7 @@
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
     <h1 class="text-3xl font-bold mb-4">Random Picker</h1>
+    <div id="userList" class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md"></div>
     <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
         <p id="roomIndicator" class="text-lg text-gray-700 font-semibold"></p>
         <input id="roomInput" type="text" placeholder="Enter Room Code" style="display: none;">
@@ -37,7 +38,7 @@
             <input id="lockInCheckbox" type="checkbox" class="w-5 h-5 accent-yellow-500 rounded-md" onclick="lockOptions()">
             <span class="text-gray-700 font-medium">Lock In</span>
         </label>
-        <ul id="optionsList" class="mt-4 space-y-2"></ul>
+        <ul id="optionsList" class="mt-4 space-y-2 h-96 overflow-y-auto border border-gray-300 rounded-lg p-2"></ul>
         <h2 id="result" class="mt-4 text-xl font-semibold text-gray-800"></h2>
     </div>
     
@@ -48,7 +49,7 @@
                 ? "ws://localhost:8000"  // Local development
                 : "wss://randompickerbe.onrender.com"  // Deployed backend
         };
-        
+
         let socket;
         let roomCode = new URLSearchParams(window.location.search).get("room");
 
@@ -78,6 +79,7 @@
                 const data = JSON.parse(event.data);
                 if (data.action === "update") {
                     updateOptionsList(data.options, data.locked);
+                    updateUserList(data.connected_users);
                 } else if (data.action === "result") {
                     document.getElementById("result").innerText = `Chosen: ${data.choice}`;
                     document.getElementById('lockInCheckbox').disabled = true
@@ -114,12 +116,20 @@
             window.location.href = "index.html"; // Redirect to main page or home
         }
 
+        function updateUserList(users) {
+            const userListElement = document.getElementById("userList");
+            userListElement.innerHTML = `
+                <strong>Users in room:</strong>
+                <div class="flex flex-wrap gap-2 mt-1">
+                    ${users.map(user => `<span class="bg-gray-200 px-2 py-1 rounded-md text-sm">${user}</span>`).join("")}
+                </div>
+            `;
+        }
+
         function updateOptionsList(options, locked) {
-            console.log('updating', options, locked)
             const list = document.getElementById("optionsList");
             list.innerHTML = "";
             for (let [option_uuid, opt] of Object.entries(options)) {
-                console.info(option_uuid, opt)
                 const li = document.createElement("li");
                 li.id = option_uuid
                 li.className = "flex items-center justify-between bg-white p-3 rounded-lg shadow"
