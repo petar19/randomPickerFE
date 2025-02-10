@@ -11,8 +11,6 @@
 <body class="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
     <h1 class="text-3xl font-bold mb-4">Random Picker</h1>
     <div class="bg-white p-6 shadow-lg w-full max-w-md">
-        <p id="roomIndicator" class="text-lg text-gray-700 font-semibold"></p>
-        <div id="userList" class="bg-white p-3 w-full max-w-md"></div>
         <input id="roomInput" type="text" placeholder="Enter Room Code" style="display: none;">
         <button id="joinButton" 
             class="mt-2 bg-red-500 text-white px-4 py-2 rounded disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed" 
@@ -20,12 +18,14 @@
             style="display: none;">
             Join Room
         </button>
+        <p id="roomIndicator" class="text-lg text-gray-700 font-semibold"></p>
         <button id="leaveButton" 
-            class="mt-2 bg-red-500 text-white px-4 py-2 rounded disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed" 
-            onclick="leaveRoom()"
-            disabled>
+            class="mt-2 bg-red-500 text-white px-4 py-2 rounded disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed hidden" 
+            onclick="leaveRoom()">
             Leave Room
         </button>
+        <div id="userList" class="bg-white p-3 w-full max-w-md"></div>
+        
         <br>
         <input id="optionInput" class="border p-2 mt-2 w-full rounded" type="text" placeholder="Enter an option">
         <button id="addOptionButton" 
@@ -58,7 +58,7 @@
             const inputRoom = document.getElementById("roomInput").value.trim();
             if (inputRoom) {
                 window.location.href = `?room=${inputRoom}`;
-                document.getElementById('leaveButton').disabled = false
+                document.getElementById("leaveButton").classList.remove("hidden"); 
                 document.getElementById("roomIndicator").innerText = `Joining... ${roomCode}`;
             }
         }
@@ -74,7 +74,7 @@
             socket.onopen = () => {
                 socket.send(JSON.stringify({ action: "get_state" }));
                 document.getElementById("roomIndicator").innerText = `Connected to Room: ${roomCode}`;
-                document.getElementById('leaveButton').disabled = false
+                document.getElementById("leaveButton").classList.remove("hidden");
                 document.getElementById('addOptionButton').disabled = false
                 isRoomLocked = false
             };
