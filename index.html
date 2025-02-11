@@ -26,20 +26,22 @@
         </button>
         <div id="userList" class="bg-white p-3 w-full max-w-md"></div>
         
-        <br>
-        <input id="optionInput" class="border p-2 mt-2 w-full rounded" type="text" placeholder="Enter an option">
-        <button id="addOptionButton" 
-            class="bg-blue-500 text-white px-4 py-2 rounded mt-2 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed" 
-            onclick="addOption()"
-            disabled>
-            Add Option
-        </button>
-        <label class="flex items-center space-x-2 cursor-pointer mt-4">
-            <input id="lockInCheckbox" type="checkbox" class="w-5 h-5 accent-yellow-500 rounded-md" onclick="lockOptions()">
-            <span class="text-gray-700 font-medium">Lock In</span>
-        </label>
-        <ul id="optionsList" class="mt-4 space-y-2 h-96 overflow-y-auto border border-gray-300 rounded-lg p-2"></ul>
-        <h2 id="result" class="mt-4 text-xl font-semibold text-gray-800"></h2>
+        <div id="optionsElement" class="hidden">
+            <br>
+            <input id="optionInput" class="border p-2 mt-2 w-full rounded" type="text" placeholder="Enter an option">
+            <button id="addOptionButton" 
+                class="bg-blue-500 text-white px-4 py-2 rounded mt-2 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed" 
+                onclick="addOption()"
+                disabled>
+                Add Option
+            </button>
+            <label class="flex items-center space-x-2 cursor-pointer mt-4">
+                <input id="lockInCheckbox" type="checkbox" class="w-5 h-5 accent-yellow-500 rounded-md" onclick="lockOptions()">
+                <span class="text-gray-700 font-medium">Lock In</span>
+            </label>
+            <ul id="optionsList" class="mt-4 space-y-2 h-96 overflow-y-auto border border-gray-300 rounded-lg p-2"></ul>
+            <h2 id="result" class="mt-4 text-xl font-semibold text-gray-800"></h2>
+        </div>
     </div>
     
 
@@ -52,33 +54,35 @@
 
         let socket;
         let roomCode = new URLSearchParams(window.location.search).get("room");
-        let isRoomLocked = false
+        let isRoomLocked = false;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 20;
+        let reconnectInterval = 5000; // Initial delay of 5 seconds
 
-        function setRoom() {
-            const inputRoom = document.getElementById("roomInput").value.trim();
-            if (inputRoom) {
-                window.location.href = `?room=${inputRoom}`;
-                document.getElementById("leaveButton").classList.remove("hidden"); 
-                document.getElementById("roomIndicator").innerText = `Joining room... ${roomCode}`;
-            }
-        }
-
-        function joinRoom() {
+        function connectWebSocket() {
             if (!roomCode) {
                 document.getElementById("roomInput").style.display = "block";
                 document.getElementById("joinButton").style.display = "block";
                 return;
             }
+
             document.getElementById("roomIndicator").innerText = `Joining room... ${roomCode}`;
             document.getElementById("leaveButton").classList.remove("hidden");
 
+            console.log('Attempting to connect to WebSocket...');
             socket = new WebSocket(`${CONFIG.BACKEND_URL}/ws/${roomCode}`);
-            
+
             socket.onopen = () => {
-                socket.send(JSON.stringify({ action: "get_state" }));
+                console.log("Connected to WebSocket!");
                 document.getElementById("roomIndicator").innerText = `Connected to Room: ${roomCode}`;
-                document.getElementById('addOptionButton').disabled = false
-                isRoomLocked = false
+                document.getElementById('addOptionButton').disabled = false;
+                document.getElementById("optionsElement").classList.remove("hidden");
+                
+                isRoomLocked = false;
+                reconnectAttempts = 0; // Reset reconnection attempts
+
+                // Request current room state
+                socket.send(JSON.stringify({ action: "get_state" }));
             };
 
             socket.onmessage = (event) => {
@@ -88,33 +92,59 @@
                     updateUserList(data.connected_users);
                 } else if (data.action === "result") {
                     document.getElementById("result").innerText = `Chosen: ${data.choice}`;
-                    document.getElementById('lockInCheckbox').disabled = true
-                    document.getElementById('addOptionButton').disabled = true
-                    document.getElementById('optionInput').disabled = true
+                    document.getElementById('lockInCheckbox').disabled = true;
+                    document.getElementById('addOptionButton').disabled = true;
+                    document.getElementById('optionInput').disabled = true;
 
                     document.querySelectorAll(".delete-btn").forEach(button => {
                         button.disabled = true;
                     });
 
-                    isRoomLocked = true
+                    isRoomLocked = true;
                 }
+            };
+
+            socket.onclose = () => {
+                console.warn("WebSocket disconnected. Attempting to reconnect...");
+                // document.getElementById("roomIndicator").innerText = "Disconnected. Reconnecting...";
+                // document.getElementById("leaveButton").classList.add("hidden"); // Hide leave button if disconnected
+
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    setTimeout(connectWebSocket, reconnectInterval);
+                    reconnectInterval *= 1.5; // Increase delay for next retry (exponential backoff)
+                    reconnectAttempts++;
+                } else {
+                    console.error("Max reconnect attempts reached. Please refresh the page.");
+                    document.getElementById("roomIndicator").innerText = "Unable to reconnect. Please refresh.";
+                }
+            };
+
+            socket.onerror = (error) => {
+                console.error("WebSocket error:", error);
+                socket.close(); // Ensure proper cleanup before retrying
             };
         }
 
         function removeOption(option_uuid) {
-            socket.send(JSON.stringify({ action: "remove_option", option_uuid }));
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ action: "remove_option", option_uuid }));
+            }
         }
 
         function addOption() {
-            document.getElementById('optionInput').value = document.getElementById('optionInput').value.trim()
+            document.getElementById('optionInput').value = document.getElementById('optionInput').value.trim();
             const option = document.getElementById("optionInput").value;
-            if (option !== "") socket.send(JSON.stringify({ action: "add_option", option }));
-            document.getElementById('optionInput').value = ""
+            if (option !== "" && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ action: "add_option", option }));
+            }
+            document.getElementById('optionInput').value = "";
         }
 
         function lockOptions() {
             const checkBox = document.getElementById("lockInCheckbox");
-            socket.send(JSON.stringify({ action: "lock", isLocked: checkBox.checked }));
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ action: "lock", isLocked: checkBox.checked }));
+            }
         }
 
         function leaveRoom() {
@@ -122,6 +152,15 @@
                 socket.close();
             }
             window.location.href = "index.html"; // Redirect to main page or home
+        }
+
+        function setRoom() {
+            const inputRoom = document.getElementById("roomInput").value.trim();
+            if (inputRoom) {
+                window.location.href = `?room=${inputRoom}`;
+                document.getElementById("leaveButton").classList.remove("hidden"); 
+                document.getElementById("roomIndicator").innerText = `Joining room... ${roomCode}`;
+            }
         }
 
         function updateUserList(users) {
@@ -139,20 +178,20 @@
             list.innerHTML = "";
             for (let [option_uuid, opt] of Object.entries(options)) {
                 const li = document.createElement("li");
-                li.id = option_uuid
-                li.className = "flex items-center justify-between bg-white p-3 rounded-lg shadow"
+                li.id = option_uuid;
+                li.className = "flex items-center justify-between bg-white p-3 rounded-lg shadow";
                 const liSpan = document.createElement("span");
-                liSpan.className = "text-gray-800"
-                li.textContent = opt
+                liSpan.className = "text-gray-800";
+                li.textContent = opt;
 
-                const deleteButton = document.createElement('button')
-                deleteButton.className = "delete-btn text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                const deleteButtonSpan = document.createElement('span')
-                deleteButtonSpan.className = 'material-icons'
-                deleteButtonSpan.innerHTML = 'delete'
-                deleteButton.disabled = isRoomLocked
-                deleteButton.onclick = () => removeOption(option_uuid)
-                deleteButton.appendChild(deleteButtonSpan)
+                const deleteButton = document.createElement('button');
+                deleteButton.className = "delete-btn text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed";
+                const deleteButtonSpan = document.createElement('span');
+                deleteButtonSpan.className = 'material-icons';
+                deleteButtonSpan.innerHTML = 'delete';
+                deleteButton.disabled = isRoomLocked;
+                deleteButton.onclick = () => removeOption(option_uuid);
+                deleteButton.appendChild(deleteButtonSpan);
 
                 li.appendChild(deleteButton);
                 list.appendChild(li);
@@ -162,11 +201,12 @@
         document.getElementById("optionInput").addEventListener("keypress", function(event) {
             if (event.key === "Enter") {
                 event.preventDefault();
-                addOption()
+                addOption();
             }
         });
 
-        window.onload = joinRoom;
+        window.onload = connectWebSocket;
+
     </script>
 </body>
 </html>
